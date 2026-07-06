@@ -1,0 +1,68 @@
+name: krinry Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type'
+        required: true
+        default: 'release'
+        type: choice
+        options: [debug, profile, release]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.0'
+          channel: 'stable'
+
+      - name: Pub get
+        run: flutter pub get
+
+      - name: Create android folder
+        run: flutter create --platforms android --org card.vodafone.alaa --project-name card_vfss .
+
+      - name: Set app label and permissions
+        run: |
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          sed -i 's/android:label="[^"]*"/android:label="𝐂𝐚𝐫𝐝 𝐕𝐨𝐝𝐚𝐟𝐨𝐧𝐞"/' $MANIFEST
+          sed -i 's|<manifest xmlns:android="http://schemas.android.com/apk/res/android">|<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.READ_CONTACTS"/>\n    <uses-permission android:name="android.permission.WRITE_CONTACTS"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>|' $MANIFEST
+
+      - name: Install imagemagick
+        run: sudo apt-get install -y imagemagick
+
+      - name: Generate launcher icons
+        run: |
+          SRC="assets/images/Vodafone.png"
+          declare -A SIZES=(
+            ["mipmap-mdpi"]=48
+            ["mipmap-hdpi"]=72
+            ["mipmap-xhdpi"]=96
+            ["mipmap-xxhdpi"]=144
+            ["mipmap-xxxhdpi"]=192
+          )
+          for dir in "${!SIZES[@]}"; do
+            size="${SIZES[$dir]}"
+            OUT="android/app/src/main/res/$dir"
+            mkdir -p "$OUT"
+            convert "$SRC" -resize ${size}x${size} "$OUT/ic_launcher.png"
+          done
+
+      - name: Build APK
+        run: flutter build apk --${{ github.event.inputs.build_type }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CardVodafone-${{ github.event.inputs.build_type }}
+          path: build/app/outputs/flutter-apk/*.apk
+          retention-days: 7
